@@ -189,13 +189,11 @@ else:
 	else:
 		inserter = SingleExistenceCheckingInserter(collection)
 
-
-
 #
 # open the file
 #
 print "opening \"%s\" with encoding \"%s\""%(args.filename, args.encoding)
-with codecs.open(args.filename, "r", encoding=args.encoding) as f:
+with open(args.filename, "r") as f:
 
 	# get file length
 	f.seek(0, os.SEEK_END)
@@ -206,12 +204,14 @@ with codecs.open(args.filename, "r", encoding=args.encoding) as f:
 	status_updater = StatusUpdater(total_val=file_length)
 
 	# tweets are expected on each line
-	for line in f:
+	for rawline in f:
 
 		# check for empty lines
-		line = line.strip()
-		if not line:
+		rawline = rawline.strip()
+		if not rawline:
 			continue
+
+		line = codecs.decode(rawline, args.encoding)
 
 		# convert it to json
 		try:
