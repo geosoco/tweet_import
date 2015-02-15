@@ -212,6 +212,8 @@ else:
 #
 # open the file
 #
+print "no retweets: %s"%(args.no_retweets)
+
 print "opening \"%s\" with encoding \"%s\""%(args.filename, args.encoding)
 with open(args.filename, "r") as f:
 
@@ -270,7 +272,7 @@ with open(args.filename, "r") as f:
 		# process retweeted_status
 		retweet_id = None
 		if 'retweeted_status' in tweet:
-			is_retweet = tweet['retweeted_status']['id']
+			retweet_id = tweet['retweeted_status']['id']
 			tweet['retweeted_status']['created_ts'] = convertRFC822ToDateTime(tweet['retweeted_status']['created_at'])
 			tweet['retweeted_status']['user']['created_ts'] = convertRFC822ToDateTime(tweet['retweeted_status']['user']['created_at'])
 
@@ -281,20 +283,19 @@ with open(args.filename, "r") as f:
 		#print json.dumps(tweet)
 		#print "\n"*4
 
-		status_updater.total_added += inserter.addTweet(tweet)
+		tweet_inc = inserter.addTweet(tweet)
+		status_updater.total_added += tweet_inc
 
 		if args.no_retweets == False and retweet_id is not None:
 			# try to keep the most recent tweet in the dict
-			if retweet_id in retweet_dict and retweet_dict[retweet_id]['ts'] < tweet['created_ts']:
-				retweet_dict[retweet_id]['ts'] = tweet['created_ts']
-				retweet_dict[retweet_id]['tweet'] = tweet['retweeted_status']
-			else:
+			if retweet_id not in retweet_dict or retweet_dict[retweet_id]['ts'] < tweet['created_ts']:
 				# add the most recent one in
-				retweet_dict[retweet_id]['ts'] = tweet['created_ts']
-				retweet_dict[retweet_id]['tweet'] = tweet['retweeted_status']
-
+				retweet_dict[retweet_id] = {
+					'ts': tweet['created_ts'],
+					'tweet': tweet['retweeted_status']
+				} 
 		# we finished processing one
-		status_updater.count += 1
+		status_updater.count += tweet_inc
 
 
 
@@ -322,12 +323,17 @@ if args.no_retweets == False and num_retweets > 0:
 	status_updater.update(True)
 
 	for k,v in retweet_dict.iteritems():
-		retweet_inserter.addTweet(v['tweet'])
+		tweet_inc = retweet_inserter.addTweet(v['tweet'])
+		status_updater.total_added += tweet_inc
 
 		# we finished processing one
-		status_updater.count += 1
+		status_updater.count += tweet_inc
 		status_updater.current_val += 1
 		status_updater.update()
+
+
+	status_updater.total_added += retweet_inserter.close()
+	status_updater.update(True)
 
 
 # shutdown our handles and connections
