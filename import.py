@@ -1,3 +1,13 @@
+#
+#
+#
+#
+#
+# Note: gnip tweets don't have timestamp_ms field, only the created_at. 
+# Livestreams do have the timestamp_ms field which offers slightly greater granularity
+#
+#
+
 import os
 import io
 import sys
@@ -153,6 +163,7 @@ parser.add_argument('-f', '--filename', help="input file")
 parser.add_argument('-e', '--encoding', default="utf-8", help="json file encoding (default is utf-8)")
 parser.add_argument('-b', '--batchsize', default=1000, type=int, help="batch insert size")
 parser.add_argument('-c', '--check', dest="check", action="store_true", help="check if tweet exists before inserting")
+parser.add_argument('-r', '--no_retweets', dest="no_retweets", action="store_true", help="do not add embedded retweets")
 parser.set_defaults(feature=False)
 
 
@@ -172,6 +183,11 @@ except Exception, e:
 	quit()
 
 
+#
+# retweet dictionary and inserter
+#
+retweet_dict = {}
+retweet_inserter = SingleExistenceCheckingInserter(collection)
 
 #
 # create the inserter
@@ -250,6 +266,14 @@ with open(args.filename, "r") as f:
 		tweet['user']['created_ts'] = convertRFC822ToDateTime(tweet['user']['created_at'])
 
 
+
+		# process retweeted_status
+		retweet_id = None
+		if 'retweeted_status' in tweet:
+			is_retweet = tweet['retweeted_status']['id']
+			tweet['retweeted_status']['created_ts'] = convertRFC822ToDateTime(tweet['retweeted_status']['created_at'])
+			tweet['retweeted_status']['user']['created_ts'] = convertRFC822ToDateTime(tweet['retweeted_status']['user']['created_at'])
+
 		#print tweet['created_ts']
 		#print "\n"*4
 
@@ -258,6 +282,16 @@ with open(args.filename, "r") as f:
 		#print "\n"*4
 
 		status_updater.total_added += inserter.addTweet(tweet)
+
+		if args.no_retweets == False and retweet_id is not None:
+			# try to keep the most recent tweet in the dict
+			if retweet_id in retweet_dict and retweet_dict[retweet_id]['ts'] < tweet['created_ts']:
+				retweet_dict[retweet_id]['ts'] = tweet['created_ts']
+				retweet_dict[retweet_id]['tweet'] = tweet['retweeted_status']
+			else:
+				# add the most recent one in
+				retweet_dict[retweet_id]['ts'] = tweet['created_ts']
+				retweet_dict[retweet_id]['tweet'] = tweet['retweeted_status']
 
 		# we finished processing one
 		status_updater.count += 1
@@ -276,6 +310,24 @@ with open(args.filename, "r") as f:
 
 status_updater.total_added += inserter.close()
 status_updater.update(True)
+
+
+# now add retweets if necessary
+num_retweets = len(retweet_dict)
+if args.no_retweets == False and num_retweets > 0:
+	print "Adding %d retweets"%(num_retweets)
+	status_updater.total_val = num_retweets
+	status_updater.current_val = 0
+	status_updater.count = 0
+	status_updater.update(True)
+
+	for k,v in retweet_dict.iteritems():
+		retweet_inserter.addTweet(v['tweet'])
+
+		# we finished processing one
+		status_updater.count += 1
+		status_updater.current_val += 1
+		status_updater.update()
 
 
 # shutdown our handles and connections
