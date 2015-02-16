@@ -171,6 +171,29 @@ args = parser.parse_args()
 
 
 #
+#
+#
+def get_inserter(batchsize, check = False):
+	inserter_obj = None
+
+	if batchsize > 1:
+
+		# error if the user also specified check
+		if check == True:
+			print "Error: can't check existence for batch inserts."
+			return None
+
+		inserter_obj = BatchInserter(collection, batchsize)
+
+	else:
+		if check == False:
+			inserter_obj = SingleInserter(collection)
+		else:
+			inserter_obj = SingleExistenceCheckingInserter(collection)	
+
+	return inserter_obj
+
+#
 # tweet id set
 #
 added_tweet_ids = set()
@@ -192,27 +215,15 @@ except Exception, e:
 # retweet dictionary and inserter
 #
 retweet_dict = {}
-retweet_inserter = SingleExistenceCheckingInserter(collection)
+#retweet_inserter = SingleExistenceCheckingInserter(collection)
 
 #
 # create the inserter
 #
-inserter = None
-
-if args.batchsize > 1:
-
-	# error if the user also specified check
-	if args.check == True:
-		print "Error: can't check existence for batch inserts."
-		quit()
-
-	inserter = BatchInserter(collection, args.batchsize)
-
-else:
-	if args.check == False:
-		inserter = SingleInserter(collection)
-	else:
-		inserter = SingleExistenceCheckingInserter(collection)
+inserter = get_inserter(args.batchsize, args.check)
+if inserter is None:
+	print "Couldn't create database inserter"
+	quit()
 
 #
 # open the file
@@ -346,8 +357,10 @@ if args.no_retweets == False and num_retweets > 0:
 	status_updater.count = 0
 	status_updater.update(True)
 
+	inserter = get_inserter(args.batchsize, args.check)
+
 	for k,v in retweet_dict.iteritems():
-		tweet_inc = retweet_inserter.addTweet(v['tweet'])
+		tweet_inc = inserter.addTweet(v['tweet'])
 		status_updater.total_added += tweet_inc
 
 		# we finished processing one
@@ -356,7 +369,7 @@ if args.no_retweets == False and num_retweets > 0:
 		status_updater.update()
 
 
-	status_updater.total_added += retweet_inserter.close()
+	status_updater.total_added += inserter.close()
 	status_updater.update(True)
 
 
