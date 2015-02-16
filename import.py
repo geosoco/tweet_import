@@ -170,6 +170,11 @@ parser.set_defaults(feature=False)
 args = parser.parse_args()
 
 
+#
+# tweet id set
+#
+added_tweet_ids = set()
+
 
 #
 # connect to the database
@@ -254,6 +259,7 @@ with open(args.filename, "r") as f:
 
 		# see if this is a gnip info message, and skip if it is
 		if 'info' in tweet and 'message' in tweet['info']:
+			# print "info tweet", repr(tweet)
 			continue
 
 		# make sure it's a tweet
@@ -263,9 +269,18 @@ with open(args.filename, "r") as f:
 			print "----------"
 			continue
 
-		#process tweet
+		# check to see if it's been processed, if not, add it to set
+		tweet_id = tweet['id']
+		if tweet_id in added_tweet_ids:
+			print "tweet %d already added"%(tweet_id)
+			continue
+
+		added_tweet_ids.add(tweet_id)
+
+		#process tweet		
 		tweet['created_ts'] = convertRFC822ToDateTime(tweet['created_at'])
 		tweet['user']['created_ts'] = convertRFC822ToDateTime(tweet['user']['created_at'])
+
 
 
 
@@ -286,16 +301,25 @@ with open(args.filename, "r") as f:
 		tweet_inc = inserter.addTweet(tweet)
 		status_updater.total_added += tweet_inc
 
-		if args.no_retweets == False and retweet_id is not None:
-			# try to keep the most recent tweet in the dict
-			if retweet_id not in retweet_dict or retweet_dict[retweet_id]['ts'] < tweet['created_ts']:
-				# add the most recent one in
-				retweet_dict[retweet_id] = {
-					'ts': tweet['created_ts'],
-					'tweet': tweet['retweeted_status']
-				} 
-		# we finished processing one
-		status_updater.count += tweet_inc
+		# handle retweets if flag says so
+		if args.no_retweets == False:
+			# see if this tweet is in our retweet set
+			if tweet_id in retweet_dict:
+				# if so, remove it from the retweet dict to save time
+				del retweet_dict[tweet_id]
+
+			# if there's a retweet, try to add it
+			if retweet_id is not None:
+				if retweet_id not in added_tweet_ids:
+					# try to keep the most recent tweet in the dict
+					if retweet_id not in retweet_dict or retweet_dict[retweet_id]['ts'] < tweet['created_ts']:
+						# add the most recent one in
+						retweet_dict[retweet_id] = {
+							'ts': tweet['created_ts'],
+							'tweet': tweet['retweeted_status']
+						} 
+					# we finished processing one
+					status_updater.count += tweet_inc
 
 
 
