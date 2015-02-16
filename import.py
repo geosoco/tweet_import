@@ -318,9 +318,9 @@ with open(args.filename, "r") as f:
 							'ts': tweet['created_ts'],
 							'tweet': tweet['retweeted_status']
 						} 
-					# we finished processing one
-					status_updater.count += tweet_inc
 
+		# we finished processing one
+		status_updater.count += tweet_inc
 
 
 		# update progress display if necessary
