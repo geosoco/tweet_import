@@ -14,9 +14,10 @@ import sys
 import simplejson as json
 import argparse
 import codecs
+import glob
 import email.utils
 from datetime import datetime
-from pymongo import MongoClient
+import pymongo
 
 
 #
@@ -59,7 +60,7 @@ class BatchInserter(Inserter):
 
 	def doInsert(self):
 		try: 
-			self.collection.insert(self.tweets)
+			self.collection.insert(self.tweets, ordered=True)
 		except Exception, e:
 			print "Failed to insert tweets: ", e
 
@@ -90,7 +91,7 @@ class SingleInserter(Inserter):
 
 	def addTweet(self, tweet):
 		try:
-			self.collection.insert(tweet)
+			self.collection.insert_one(tweet)
 
 			return 1
 		except Exception, e:
@@ -121,7 +122,7 @@ class SingleExistenceCheckingInserter(Inserter):
 
 		# insert the tweet
 		try:
-			self.collection.insert(tweet)
+			self.collection.insert_one(tweet)
 			return 1
 		except Exception, e:
 			print "Failed to insert tweets: ", e
@@ -138,6 +139,8 @@ class StatusUpdater(object):
 		self.current_val = current_val
 		self.total_val = total_val
 		self.total_added = 0
+		self.total_files = 0
+		self.current_file = 0
 
 	def update(self, force=False):
 		# update progress display if necessary
@@ -146,7 +149,7 @@ class StatusUpdater(object):
 		if force or time_since_last_update.total_seconds() > self.update_time:
 			self.last_display_time = cur_time
 			progress = self.current_val * 100.0 / self.total_val
-			print "parsed %d tweets (%2.2f%% finished). %d added."%(self.count, progress, self.total_added)
+			print "File %d / %d - parsed %d tweets (%2.2f%% finished). %d added."%(self.current_file+1, self.total_files, self.count, progress, self.total_added)
 
 #
 #
@@ -159,7 +162,7 @@ parser.add_argument('database', help='database name')
 parser.add_argument('collection', help="collection name")
 parser.add_argument('-l', '--limit', help="limit", type=int, default=0)
 parser.add_argument('-o', '--output', help="outfile")
-parser.add_argument('-f', '--filename', help="input file")
+parser.add_argument('-f', '--filename', help="input files")
 parser.add_argument('-e', '--encoding', default="utf-8", help="json file encoding (default is utf-8)")
 parser.add_argument('-b', '--batchsize', default=1000, type=int, help="batch insert size")
 parser.add_argument('-c', '--check', dest="check", action="store_true", help="check if tweet exists before inserting")
@@ -204,12 +207,15 @@ added_tweet_ids = set()
 # connect to the database
 #
 try:
-	client = MongoClient(args.host)
+	client = pymongo.MongoClient(args.host)
 	db = client[args.database]
 	collection = db[args.collection]
 except Exception, e:
 	print "failed to connect to '%s' and open db (%s) or collection (%s): %s"%(args.database, args.collection, e)
 	quit()
+
+
+print "no retweets: %s"%(args.no_retweets)
 
 
 #
@@ -232,122 +238,134 @@ if inserter is None:
 	print "Couldn't create database inserter"
 	quit()
 
+#  create status updater
+status_updater = StatusUpdater()
+
+# build file list
+file_list = sorted(glob.glob(args.filename))
+file_count = len(file_list)
+status_updater.total_files = file_count
+
 #
-# open the file
+# step through each file
 #
-print "no retweets: %s"%(args.no_retweets)
 
-print "opening \"%s\" with encoding \"%s\""%(args.filename, args.encoding)
-with open(args.filename, "r") as f:
+for filename_index in range(file_count):
 
-	# get file length
-	f.seek(0, os.SEEK_END)
-	file_length = f.tell()
-	f.seek(0, os.SEEK_SET)
+	filename = file_list[filename_index]
+	print "opening \"%s\" with encoding \"%s\" (%d of %d)"%(filename, args.encoding, filename_index+1, file_count)
+	with open(filename, "r") as f:
 
-	# store the current time so we know when to update
-	status_updater = StatusUpdater(total_val=file_length)
+		# get file length
+		f.seek(0, os.SEEK_END)
+		file_length = f.tell()
+		f.seek(0, os.SEEK_SET)
 
-	# tweets are expected on each line
-	for rawline in f:
+		status_updater.current_file = filename_index 
 
-		# check for empty lines
-		rawline = rawline.strip()
-		if not rawline:
-			continue
+		# update status_updater
+		status_updater.total_val = file_length
 
-		line = codecs.decode(rawline, args.encoding)
+		# tweets are expected on each line
+		for rawline in f:
 
-		# convert it to json
-		try:
-			tweet = None
+			# check for empty lines
+			rawline = rawline.strip()
+			if not rawline:
+				continue
 
-			#print "parsing ----"
-			#print line
+			line = codecs.decode(rawline, args.encoding)
+
+			# convert it to json
+			try:
+				tweet = None
+
+				#print "parsing ----"
+				#print line
+				#print "\n"*4
+				tweet = json.loads(line)
+
+			except Exception, e:
+				print "failed to parse json: ", e
+				print line
+
+			# continue if the tweet failed
+			if tweet is None:
+				continue
+
+			# see if this is a gnip info message, and skip if it is
+			if 'info' in tweet and 'message' in tweet['info']:
+				# print "info tweet", repr(tweet)
+				continue
+
+			# make sure it's a tweet
+			if not 'text' in tweet or not 'created_at' in tweet or not 'user' in tweet:
+				print "line is not a recognized tweet..."
+				print "> ", line
+				print "----------"
+				continue
+
+			# check to see if it's been processed, if not, add it to set
+			tweet_id = tweet['id']
+			if tweet_id in added_tweet_ids:
+				print "tweet %d already added"%(tweet_id)
+				continue
+
+			added_tweet_ids.add(tweet_id)
+
+			#process tweet		
+			tweet['created_ts'] = convertRFC822ToDateTime(tweet['created_at'])
+			tweet['user']['created_ts'] = convertRFC822ToDateTime(tweet['user']['created_at'])
+
+
+
+
+			# process retweeted_status
+			retweet_id = None
+			if 'retweeted_status' in tweet:
+				retweet_id = tweet['retweeted_status']['id']
+				tweet['retweeted_status']['created_ts'] = convertRFC822ToDateTime(tweet['retweeted_status']['created_at'])
+				tweet['retweeted_status']['user']['created_ts'] = convertRFC822ToDateTime(tweet['retweeted_status']['user']['created_at'])
+
+			#print tweet['created_ts']
 			#print "\n"*4
-			tweet = json.loads(line)
-
-		except Exception, e:
-			print "failed to parse json: ", e
-			print line
-
-		# continue if the tweet failed
-		if tweet is None:
-			continue
-
-		# see if this is a gnip info message, and skip if it is
-		if 'info' in tweet and 'message' in tweet['info']:
-			# print "info tweet", repr(tweet)
-			continue
-
-		# make sure it's a tweet
-		if not 'text' in tweet or not 'created_at' in tweet or not 'user' in tweet:
-			print "line is not a recognized tweet..."
-			print "> ", line
-			print "----------"
-			continue
-
-		# check to see if it's been processed, if not, add it to set
-		tweet_id = tweet['id']
-		if tweet_id in added_tweet_ids:
-			print "tweet %d already added"%(tweet_id)
-			continue
-
-		added_tweet_ids.add(tweet_id)
-
-		#process tweet		
-		tweet['created_ts'] = convertRFC822ToDateTime(tweet['created_at'])
-		tweet['user']['created_ts'] = convertRFC822ToDateTime(tweet['user']['created_at'])
 
 
+			#print json.dumps(tweet)
+			#print "\n"*4
+
+			tweet_inc = inserter.addTweet(tweet)
+			status_updater.total_added += tweet_inc
+
+			# handle retweets if flag says so
+			if args.no_retweets == False:
+				# see if this tweet is in our retweet set
+				if tweet_id in retweet_dict:
+					# if so, remove it from the retweet dict to save time
+					del retweet_dict[tweet_id]
+
+				# if there's a retweet, try to add it
+				if retweet_id is not None:
+					if retweet_id not in added_tweet_ids:
+						# try to keep the most recent tweet in the dict
+						if retweet_id not in retweet_dict or retweet_dict[retweet_id]['ts'] < tweet['created_ts']:
+							# add the most recent one in
+							retweet_dict[retweet_id] = {
+								'ts': tweet['created_ts'],
+								'tweet': tweet['retweeted_status']
+							} 
+
+			# we finished processing one
+			status_updater.count += tweet_inc
 
 
-		# process retweeted_status
-		retweet_id = None
-		if 'retweeted_status' in tweet:
-			retweet_id = tweet['retweeted_status']['id']
-			tweet['retweeted_status']['created_ts'] = convertRFC822ToDateTime(tweet['retweeted_status']['created_at'])
-			tweet['retweeted_status']['user']['created_ts'] = convertRFC822ToDateTime(tweet['retweeted_status']['user']['created_at'])
-
-		#print tweet['created_ts']
-		#print "\n"*4
+			# update progress display if necessary
+			status_updater.current_val = f.tell()
+			status_updater.update()
 
 
-		#print json.dumps(tweet)
-		#print "\n"*4
-
-		tweet_inc = inserter.addTweet(tweet)
-		status_updater.total_added += tweet_inc
-
-		# handle retweets if flag says so
-		if args.no_retweets == False:
-			# see if this tweet is in our retweet set
-			if tweet_id in retweet_dict:
-				# if so, remove it from the retweet dict to save time
-				del retweet_dict[tweet_id]
-
-			# if there's a retweet, try to add it
-			if retweet_id is not None:
-				if retweet_id not in added_tweet_ids:
-					# try to keep the most recent tweet in the dict
-					if retweet_id not in retweet_dict or retweet_dict[retweet_id]['ts'] < tweet['created_ts']:
-						# add the most recent one in
-						retweet_dict[retweet_id] = {
-							'ts': tweet['created_ts'],
-							'tweet': tweet['retweeted_status']
-						} 
-
-		# we finished processing one
-		status_updater.count += tweet_inc
-
-
-		# update progress display if necessary
-		status_updater.current_val = f.tell()
-		status_updater.update()
-
-
-		if args.limit > 0 and status_updater.count >= args.limit:
-			break
+			if args.limit > 0 and status_updater.count >= args.limit:
+				break
 
 
 
