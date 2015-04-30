@@ -164,6 +164,7 @@ parser.add_argument('-e', '--encoding', default="utf-8", help="json file encodin
 parser.add_argument('-b', '--batchsize', default=1000, type=int, help="batch insert size")
 parser.add_argument('-c', '--check', dest="check", action="store_true", help="check if tweet exists before inserting")
 parser.add_argument('-r', '--no_retweets', dest="no_retweets", action="store_true", help="do not add embedded retweets")
+parser.add_argument('--no_index', dest="no_index", action="store_true", help="do not create an index for tweet ids")
 parser.set_defaults(feature=False)
 
 
@@ -210,6 +211,12 @@ except Exception, e:
 	print "failed to connect to '%s' and open db (%s) or collection (%s): %s"%(args.database, args.collection, e)
 	quit()
 
+
+#
+# create indexes
+#
+if not args.no_index:
+	collection.create_index( [("id", pymongo.ASCENDING )])
 
 #
 # retweet dictionary and inserter
