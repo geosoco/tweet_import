@@ -72,7 +72,9 @@ args = parser.parse_args()
 #
 # tweet id set
 #
-added_tweet_ids = set()
+added_tweet_ids = {}
+TWEET_ORIGINAL = 1
+TWEET_RETWEET = 2
 
 
 #
@@ -180,10 +182,10 @@ for filename_index in range(file_count):
 			# check to see if it's been processed, if not, add it to set
 			tweet_id = tweet['id']
 			if tweet_id in added_tweet_ids:
-				print "tweet %d already added"%(tweet_id)
+				print "tweet %d already added [%d]"%(tweet_id, added_tweet_ids[tweet_id])
 				continue
 
-			added_tweet_ids.add(tweet_id)
+			added_tweet_ids[tweet_id] = TWEET_ORIGINAL
 
 			#process tweet		
 			tweet['created_ts'] = convertRFC822ToDateTime(tweet['created_at'])
@@ -198,6 +200,7 @@ for filename_index in range(file_count):
 				retweet_id = tweet['retweeted_status']['id']
 				tweet['retweeted_status']['created_ts'] = convertRFC822ToDateTime(tweet['retweeted_status']['created_at'])
 				tweet['retweeted_status']['user']['created_ts'] = convertRFC822ToDateTime(tweet['retweeted_status']['user']['created_at'])
+				tweet['retweeted_status']['source_tweet'] = tweet_id
 
 			#print tweet['created_ts']
 			#print "\n"*4
@@ -225,7 +228,10 @@ for filename_index in range(file_count):
 							retweet_dict[retweet_id] = {
 								'ts': tweet['created_ts'],
 								'tweet': tweet['retweeted_status']
-							} 
+							}
+
+							# add it to the added_tweet list too
+							added_tweet_ids[retweet_id] = TWEET_RETWEET
 
 			# we finished processing one
 			status_updater.count += tweet_inc
