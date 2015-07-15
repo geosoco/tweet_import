@@ -20,6 +20,7 @@ from datetime import datetime
 import pymongo
 
 from inserters import *
+from status_updater import *
 
 
 #
