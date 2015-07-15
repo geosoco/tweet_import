@@ -19,6 +19,8 @@ import email.utils
 from datetime import datetime
 import pymongo
 
+from inserters import *
+
 
 #
 # convert an RFC822 date to a datetime
@@ -37,119 +39,9 @@ def convertRFC822ToDateTime(rfc822string):
 
 
 
-class Inserter(object):
-
-	def __init__(self, collection):
-		self.collection = collection
-
-
-	def addTweet(self, tweet):
-		return 0
-
-	def close(self):
-		return 0
 
 
 
-class BatchInserter(Inserter):
-
-	def __init__(self, collection, size=1000):
-		super(BatchInserter, self).__init__(collection)
-		self.batch_size = size
-		self.tweets = []
-
-	def doInsert(self):
-		try: 
-			self.collection.insert(self.tweets, ordered=True)
-		except Exception, e:
-			print "Failed to insert tweets: ", e
-
-		# truncate the array
-		self.tweets = []
-
-
-
-	def addTweet(self, tweet):
-		self.tweets.append(tweet)
-		#print "%d tweets / %d tweets"%(len(self.tweets), self.batch_size)
-		if len(self.tweets) >= self.batch_size:
-			self.doInsert()
-			return self.batch_size
-		
-		return 0
-
-	def close(self):
-		print "closing..."
-		num_tweets = len(self.tweets)
-		if num_tweets > 0:
-			self.doInsert()
-		return num_tweets
-
-
-
-class SingleInserter(Inserter):
-
-	def addTweet(self, tweet):
-		try:
-			self.collection.insert_one(tweet)
-
-			return 1
-		except Exception, e:
-			print "Failed to insert tweets: ", e
-			return 0
-
-
-
-
-class SingleExistenceCheckingInserter(Inserter):
-
-	def addTweet(self, tweet):
-
-		# try to find the tweet
-		try:
-			tweet_id = long(tweet["id"])
-			cursor = self.collection.find({ "id": tweet_id}, limit=1)
-			# do nothing if tweet exists already
-			if cursor.count() > 0:
-				print "Skipping tweet with id: %s"%(str(tweet_id))
-				cursor.close()
-				return 0
-
-			cursor.close()
-
-		except Exception, e:
-			print "Query failed finding tweet of id"
-
-		# insert the tweet
-		try:
-			self.collection.insert_one(tweet)
-			return 1
-		except Exception, e:
-			print "Failed to insert tweets: ", e
-			return 0
-
-
-
-class StatusUpdater(object):
-
-	def __init__(self, update_time = 5, count = 0, current_val = 0, total_val = 0, total_added = 0):
-		self.update_time = update_time
-		self.last_display_time = datetime.now()
-		self.count = count
-		self.current_val = current_val
-		self.total_val = total_val
-		self.total_added = 0
-		self.total_files = 0
-		self.current_file = 0
-
-	def update(self, force=False):
-		# update progress display if necessary
-		cur_time = datetime.now()
-		time_since_last_update = cur_time - self.last_display_time
-		if force or time_since_last_update.total_seconds() > self.update_time:
-			self.last_display_time = cur_time
-			progress = self.current_val * 100.0 / self.total_val
-			print "File %d / %d - parsed %d tweets (%2.2f%% finished). %d added."%(self.current_file+1, self.total_files, self.count, progress, self.total_added)
 
 #
 #
@@ -174,28 +66,7 @@ parser.set_defaults(feature=False)
 args = parser.parse_args()
 
 
-#
-#
-#
-def get_inserter(batchsize, check = False):
-	inserter_obj = None
 
-	if batchsize > 1:
-
-		# error if the user also specified check
-		if check == True:
-			print "Error: can't check existence for batch inserts."
-			return None
-
-		inserter_obj = BatchInserter(collection, batchsize)
-
-	else:
-		if check == False:
-			inserter_obj = SingleInserter(collection)
-		else:
-			inserter_obj = SingleExistenceCheckingInserter(collection)	
-
-	return inserter_obj
 
 #
 # tweet id set
@@ -360,7 +231,8 @@ for filename_index in range(file_count):
 
 
 			# update progress display if necessary
-			status_updater.current_val = f.tell()
+			#status_updater.current_val = f.tell()
+			status_updater.current_val = os.lseek(f.fileno(), 0, os.SEEK_CUR)
 			status_updater.update()
 
 
