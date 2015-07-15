@@ -183,7 +183,7 @@ for filename_index in range(file_count):
 			tweet_id = tweet['id']
 			if tweet_id in added_tweet_ids:
 				tweet_type = added_tweet_ids[tweet_id]
-				if tweet_type = =TWEET_ORIGINAL:
+				if tweet_type == TWEET_ORIGINAL:
 					print "tweet %d already added [%d]"%(tweet_id, added_tweet_ids[tweet_id])
 					continue
 
