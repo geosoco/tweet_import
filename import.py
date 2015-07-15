@@ -183,12 +183,12 @@ for filename_index in range(file_count):
 			tweet_id = tweet['id']
 			if tweet_id in added_tweet_ids:
 				tweet_type = added_tweet_ids[tweet_id]
-				if tweet_type = TWEET_ORIGINAL:
+				if tweet_type = =TWEET_ORIGINAL:
 					print "tweet %d already added [%d]"%(tweet_id, added_tweet_ids[tweet_id])
 					continue
 
 				# we have an out-of-order retweet
-				if tweet_type = TWEET_RETWEET and retweet_dict[tweet_id]:
+				if tweet_type == TWEET_RETWEET and retweet_dict[tweet_id]:
 					# delete the retweet and continue adding this
 					del retweet_dict[tweet_id]
 				else:
