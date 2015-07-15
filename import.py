@@ -182,8 +182,18 @@ for filename_index in range(file_count):
 			# check to see if it's been processed, if not, add it to set
 			tweet_id = tweet['id']
 			if tweet_id in added_tweet_ids:
-				print "tweet %d already added [%d]"%(tweet_id, added_tweet_ids[tweet_id])
-				continue
+				tweet_type = added_tweet_ids[tweet_id]
+				if tweet_type = TWEET_ORIGINAL:
+					print "tweet %d already added [%d]"%(tweet_id, added_tweet_ids[tweet_id])
+					continue
+
+				# we have an out-of-order retweet
+				if tweet_type = TWEET_RETWEET and retweet_dict[tweet_id]:
+					# delete the retweet and continue adding this
+					del retweet_dict[tweet_id]
+				else:
+					print "unexpected error: tweet marked as being inserted as retweet, but not in retweet_dict"
+
 
 			added_tweet_ids[tweet_id] = TWEET_ORIGINAL
 
