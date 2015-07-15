@@ -118,7 +118,7 @@ class SingleExistenceCheckingInserter(InserterBase):
 #
 # factory function
 #
-def get_inserter(batchsize, check = False):
+def get_inserter(collection, batchsize, check = False):
 	"""
 	Factory function to get an inserter based on the parameters passed in
 

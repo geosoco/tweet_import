@@ -104,7 +104,7 @@ retweet_dict = {}
 #
 # create the inserter
 #
-inserter = get_inserter(args.batchsize, args.check)
+inserter = get_inserter(collection, args.batchsize, args.check)
 if inserter is None:
 	print "Couldn't create database inserter"
 	quit()
