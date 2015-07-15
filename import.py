@@ -271,7 +271,7 @@ if args.no_retweets == False and num_retweets > 0:
 	status_updater.count = 0
 	status_updater.update(True)
 
-	inserter = get_inserter(args.batchsize, args.check)
+	inserter = get_inserter(collection, args.batchsize, args.check)
 
 	for k,v in retweet_dict.iteritems():
 		tweet_inc = inserter.addTweet(v['tweet'])
