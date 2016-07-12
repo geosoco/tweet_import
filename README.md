@@ -17,6 +17,8 @@ Usage and Arguments
 | `collection` | name of the collection in the database to insert. eg. `tweets` |
 
 
+Optional arguments:
+
 | shorthand argument | argument | description |
 | --- | --- | --- |
 | -l | --limit <x> | limit the number of tweets to import to x. |
@@ -26,6 +28,7 @@ Usage and Arguments
 | -c | --check |	check if tweet exists (same tweet id) before inserting. Use this is something goes wrong during an insert, or you're trying to merge two datasets. CAUTION is incredibly slow. |
 | -r | --no_retweets | do not add embedded retweets. By default the source tweet of a retweet is also inserted like a top-level tweet, but this can bias datasets towards things that are retweeted. |
 |  | --no_index |	do not create an index for tweet ids. By default an ascending index is created on the tweet id. |
+
 
 Example Usage
 =============
